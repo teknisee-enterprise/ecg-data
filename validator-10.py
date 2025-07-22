@@ -724,12 +724,16 @@ class ECGSignalValidator10(QMainWindow):
             else:
                 self.snr_label.setText("SNR: ∞ dB")
                 
-            self.mse_label.setText(f"MSE: {(mse/100000):.3f}")
+            self.mse_label.setText(f"MSE: {(mse/100000):.3f} mV²")
             
             # New metric displays
-            self.peak_error_label.setText(f"Peak Error: {peak_error/10:.2f} mV")
-            self.thd_label.setText(f"THD: {thd/10:.2f} %")
-            self.correlation_label.setText(f"Correlation: {correlation:.3f}")
+            self.peak_error_label.setText(f"Peak Error: {peak_error*3/100:.2f} mV")
+            self.thd_label.setText(f"THD: {thd*3/100:.2f} %")
+            # self.correlation_label.setText(f"Correlation: {correlation:.3f}")
+    
+            rmse = np.sqrt(mse)
+            self.correlation_label.setText(f"RMSE: {rmse:.2f} mV")
+            
             
             # Additional info in status
             overlap_duration = time_end - time_start
