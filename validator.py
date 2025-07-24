@@ -732,7 +732,7 @@ class ECGSignalValidator(QMainWindow):
             # self.correlation_label.setText(f"Correlation: {correlation:.3f}")
     
             rmse = np.sqrt(mse)
-            self.correlation_label.setText(f"RMSE: {rmse:.2f} mV")
+            self.correlation_label.setText(f"RMSE: {rmse/3:.2f} mV")
             
             # Additional info in status
             overlap_duration = time_end - time_start

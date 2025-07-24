@@ -12,6 +12,7 @@ from PyQt5.QtGui import QIcon, QPainter, QPolygon, QFont
 import wfdb
 import os
 import struct
+import csv
 from datetime import datetime
 from collections import deque
 from enum import Enum
@@ -236,10 +237,12 @@ class ECGToBinaryConverter(QMainWindow):
         # Folder paths
         self.sample_folder = "sample"
         self.output_folder = "hasil"
+        self.csv_output_folder = "hasilcsv"  # NEW: CSV output folder
         
-        # Create output folder if not exists
-        if not os.path.exists(self.output_folder):
-            os.makedirs(self.output_folder)
+        # Create output folders if not exist
+        for folder in [self.output_folder, self.csv_output_folder]:
+            if not os.path.exists(folder):
+                os.makedirs(folder)
         
         # Window setup
         self.setWindowTitle("ECG PhysioNet to Binary Converter - 12/10 Lead Mode")
@@ -272,7 +275,7 @@ class ECGToBinaryConverter(QMainWindow):
         self.main_layout.addWidget(self.control_group)
         self.control_layout = QGridLayout(self.control_group)
         
-        # Row 0: Record selection, Mode selection, Y-axis mode, convert button, and info panel toggle
+        # Row 0: Record selection, Mode selection, Y-axis mode, convert buttons, and info panel toggle
         self.record_label = QLabel("Select Record:")
         self.control_layout.addWidget(self.record_label, 0, 0)
         
@@ -298,21 +301,29 @@ class ECGToBinaryConverter(QMainWindow):
         self.y_mode_combo.currentIndexChanged.connect(self.change_y_mode)
         self.control_layout.addWidget(self.y_mode_combo, 0, 5)
         
+        # Convert buttons container
         self.convert_button = QPushButton("Convert to Binary")
         self.convert_button.clicked.connect(self.convert_to_binary)
         self.convert_button.setEnabled(False)
         self.control_layout.addWidget(self.convert_button, 0, 6)
         
+        # NEW: Export to CSV button
+        self.export_csv_button = QPushButton("Export to CSV")
+        self.export_csv_button.clicked.connect(self.export_to_csv)
+        self.export_csv_button.setEnabled(False)
+        self.export_csv_button.setStyleSheet("QPushButton { background-color: #2196F3; color: white; }")
+        self.control_layout.addWidget(self.export_csv_button, 0, 7)
+        
         # Toggle info panel button
         self.info_toggle_btn = QPushButton("Info Panel")
         self.info_toggle_btn.clicked.connect(self.toggle_info_panel)
-        self.control_layout.addWidget(self.info_toggle_btn, 0, 7)
+        self.control_layout.addWidget(self.info_toggle_btn, 0, 8)
         
         # Guide lines toggle
         self.guide_toggle_btn = QPushButton("Guide: ON")
         self.guide_toggle_btn.clicked.connect(self.toggle_guide_lines)
         self.guide_toggle_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; }")
-        self.control_layout.addWidget(self.guide_toggle_btn, 0, 8)
+        self.control_layout.addWidget(self.guide_toggle_btn, 0, 9)
         
         # Row 1: Play controls and speed
         self.play_button = QPushButton("Play")
@@ -339,7 +350,7 @@ class ECGToBinaryConverter(QMainWindow):
         # Conversion status label
         self.conversion_status_label = QLabel("")
         self.conversion_status_label.setStyleSheet("color: blue; font-weight: bold;")
-        self.control_layout.addWidget(self.conversion_status_label, 1, 6, 1, 3)
+        self.control_layout.addWidget(self.conversion_status_label, 1, 6, 1, 4)
         
         # Row 2: Window size, gain control, and ESP32 info
         self.window_label = QLabel("Window Size:")
@@ -380,7 +391,7 @@ class ECGToBinaryConverter(QMainWindow):
         self.gain_warning_label = QLabel("")
         self.gain_warning_label.setStyleSheet("color: #FF8C00; font-weight: bold;")  # Orange/yellow color
         self.gain_warning_label.setVisible(False)
-        self.control_layout.addWidget(self.gain_warning_label, 3, 4, 1, 3)
+        self.control_layout.addWidget(self.gain_warning_label, 3, 4, 1, 6)
         
         # Row 4: Trim controls
         self.trim_label = QLabel("Trim Signal:")
@@ -410,6 +421,178 @@ class ECGToBinaryConverter(QMainWindow):
         
         self.trim_info_label = QLabel("Trimmed: - samples")
         self.control_layout.addWidget(self.trim_info_label, 4, 5)
+    
+    def get_unit_suffix(self):
+        """Get unit suffix based on current Y-axis mode"""
+        if self.current_y_mode == 0:  # Asli (mV)
+            return "mV"
+        elif self.current_y_mode == 1:  # Hasil (12bit)
+            return "12bit"
+        else:  # Tegangan Hasil (V)
+            return "V"
+    
+    def get_active_channels_data(self):
+        """Get data for only active (checked) channels based on current mode"""
+        if self.signal_trimmed is None:
+            return None, None, None
+        
+        # Get appropriate data and channel names based on mode
+        if self.ecg_mode == ECGMode.TWELVE_LEAD:
+            # 12-lead mode: use mapped signal
+            all_data = self.map_channels_to_standard()
+            all_channel_names = self.CHANNELS_12LEAD
+            max_channels = 12
+        else:  # TEN_LEAD
+            # 10-lead mode: use electrode data if available
+            if self.electrode_data is not None:
+                all_data = self.electrode_data
+                all_channel_names = self.CHANNELS_10LEAD
+                max_channels = 10
+            else:
+                return None, None, None
+        
+        # Filter only active channels
+        active_channels = []
+        active_data_list = []
+        active_names = []
+        
+        for i in range(max_channels):
+            if self.show_channel[i]:  # Only include checked channels
+                channel_data_mv = all_data[:, i]
+                
+                # Convert to display format based on Y-axis mode
+                channel_data_display = self.get_display_data(channel_data_mv)
+                
+                active_data_list.append(channel_data_display)
+                active_names.append(all_channel_names[i])
+                active_channels.append(i)
+        
+        if not active_data_list:
+            return None, None, None
+            
+        # Convert to numpy array
+        active_data = np.column_stack(active_data_list)
+        
+        # Create time array (relative from 0)
+        relative_time = np.arange(len(active_data)) / self.sample_rate
+        
+        return active_data, active_names, relative_time
+    
+    def export_to_csv(self):
+        """Export trimmed ECG data to CSV format"""
+        if self.signal_trimmed is None:
+            QMessageBox.warning(self, "Warning", "No data available for export.")
+            return
+        
+        try:
+            # Get active channels data
+            active_data, active_names, relative_time = self.get_active_channels_data()
+            
+            if active_data is None or len(active_names) == 0:
+                QMessageBox.warning(self, "Warning", "No active channels selected for export.")
+                return
+            
+            # Create filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            mode_suffix = "10lead" if self.ecg_mode == ECGMode.TEN_LEAD else "12lead"
+            unit_suffix = self.get_unit_suffix()
+            
+            csv_filename = f"{self.record_combo.currentText()}_{mode_suffix}_{unit_suffix}_{timestamp}.csv"
+            csv_path = os.path.join(self.csv_output_folder, csv_filename)
+            
+            # Prepare headers
+            unit_suffix_header = f"({unit_suffix})"
+            headers = ["Time(s)"] + [f"{name}{unit_suffix_header}" for name in active_names]
+            
+            # Write CSV file
+            with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                
+                # Write header
+                writer.writerow(headers)
+                
+                # Write data rows
+                for i in range(len(relative_time)):
+                    row = [f"{relative_time[i]:.4f}"]  # Time with 4 decimal precision
+                    
+                    # Add channel data
+                    for j in range(len(active_names)):
+                        if self.current_y_mode == 0:  # mV - 4 decimal precision
+                            row.append(f"{active_data[i, j]:.4f}")
+                        elif self.current_y_mode == 1:  # 12bit - integer
+                            row.append(f"{int(active_data[i, j])}")
+                        else:  # Voltage - 6 decimal precision
+                            row.append(f"{active_data[i, j]:.6f}")
+                    
+                    writer.writerow(row)
+            
+            # Calculate file statistics
+            file_size = os.path.getsize(csv_path)
+            
+            # Prepare export info
+            export_info = f"--- CSV Export Results ---\n"
+            export_info += f"Output file: {csv_filename}\n"
+            export_info += f"Mode: {self.ecg_mode.value}\n"
+            export_info += f"Y-axis mode: {self.y_axis_modes[self.current_y_mode]}\n"
+            export_info += f"Source record: {self.record_combo.currentText()}\n"
+            export_info += f"Trimmed duration: {self.trim_start:.2f}s - {self.trim_end:.2f}s\n"
+            export_info += f"Total duration: {self.trim_end - self.trim_start:.2f}s\n"
+            export_info += f"Samples exported: {len(active_data):,}\n"
+            export_info += f"Active channels: {len(active_names)} ({', '.join(active_names)})\n"
+            export_info += f"File size: {file_size:,} bytes\n"
+            export_info += f"Location: {self.csv_output_folder}\n"
+            export_info += f"Status: Success\n"
+            
+            # Update info panel
+            current_info = self.info_sidebar.current_info.toPlainText()
+            self.info_sidebar.set_current_info(current_info + "\n\n" + export_info)
+            
+            # Add to history
+            history_item = ConversionHistoryItem(
+                filename=csv_filename,
+                timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                duration=self.trim_end - self.trim_start,
+                samples=len(active_data),
+                file_size=file_size,
+                status="CSV Export Success",
+                mode=f"{self.ecg_mode.value} ({unit_suffix})"
+            )
+            self.info_sidebar.add_history_item(history_item)
+            
+            # Open sidebar to show results
+            self.info_sidebar.open()
+            
+            # Show success message
+            message = f"CSV Export completed successfully!\n\n"
+            message += f"Mode: {self.ecg_mode.value}\n"
+            message += f"Y-axis: {self.y_axis_modes[self.current_y_mode]}\n"
+            message += f"File: {csv_filename}\n"
+            message += f"Size: {file_size:,} bytes\n"
+            message += f"Duration: {self.trim_end - self.trim_start:.2f}s\n"
+            message += f"Channels: {len(active_names)} active\n"
+            message += f"Samples: {len(active_data):,}\n"
+            message += f"Location: {self.csv_output_folder}\n"
+            
+            QMessageBox.information(self, "Export Success", message)
+            
+            # Update status bar
+            self.statusBar().showMessage(f"CSV exported: {csv_filename} ({len(active_names)} channels, {len(active_data):,} samples)")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"CSV export failed: {str(e)}")
+            
+            # Add failed export to history
+            history_item = ConversionHistoryItem(
+                filename="Failed CSV export",
+                timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                duration=self.trim_end - self.trim_start if hasattr(self, 'trim_end') else 0,
+                samples=0,
+                file_size=0,
+                status=f"CSV Export Error: {str(e)}",
+                mode=self.ecg_mode.value
+            )
+            self.info_sidebar.add_history_item(history_item)
+            self.info_sidebar.open()
     
     def change_ecg_mode(self, index):
         """Change between 12-lead and 10-lead mode"""
@@ -684,6 +867,7 @@ class ECGToBinaryConverter(QMainWindow):
         if self.signal_trimmed is None:
             self.gain_warning_label.setVisible(False)
             self.convert_button.setEnabled(False)
+            self.export_csv_button.setEnabled(False)  # NEW: Disable CSV export too
             return
         
         # Get appropriate data based on mode
@@ -699,6 +883,7 @@ class ECGToBinaryConverter(QMainWindow):
         if not has_data:
             self.gain_warning_label.setVisible(False)
             self.convert_button.setEnabled(True)
+            self.export_csv_button.setEnabled(True)  # NEW: Enable CSV export
             return
         
         # Find min/max of actual signal data
@@ -706,6 +891,7 @@ class ECGToBinaryConverter(QMainWindow):
         if len(non_zero_data) == 0:
             self.gain_warning_label.setVisible(False)
             self.convert_button.setEnabled(True)
+            self.export_csv_button.setEnabled(True)  # NEW: Enable CSV export
             return
             
         min_signal = np.min(non_zero_data)
@@ -729,12 +915,15 @@ class ECGToBinaryConverter(QMainWindow):
             # Disable conversion when signal is out of range
             self.convert_button.setEnabled(False)
             self.convert_button.setText("Convert Disabled (Out of Range)")
+            # CSV export can still work even if binary conversion is disabled
+            self.export_csv_button.setEnabled(True)
         else:
             self.gain_warning_label.setVisible(False)
             
             # Enable conversion when signal is in acceptable range
             self.convert_button.setEnabled(True)
             self.convert_button.setText("Convert to Binary")
+            self.export_csv_button.setEnabled(True)  # NEW: Enable CSV export
     
     def change_gain(self, value):
         """Change gain value and update display"""
@@ -917,6 +1106,7 @@ class ECGToBinaryConverter(QMainWindow):
             self.update_record_info()
             self.update_plots()
             self.convert_button.setEnabled(True)
+            self.export_csv_button.setEnabled(True)  # NEW: Enable CSV export
             
             # Update info panel
             self.update_info_panel()
@@ -926,6 +1116,7 @@ class ECGToBinaryConverter(QMainWindow):
         except Exception as e:
             self.statusBar().showMessage(f"Error loading record: {str(e)}")
             self.convert_button.setEnabled(False)
+            self.export_csv_button.setEnabled(False)  # NEW: Disable CSV export on error
     
     def update_trim(self):
         """Update signal trimming"""
