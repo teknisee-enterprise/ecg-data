@@ -30,6 +30,10 @@ class ECGConverterApp(QMainWindow):
         self.current_y_mode = YAxisMode.ORIGINAL_MV
         self.show_guide_lines = True
         
+        # Channel configuration
+        self.raw_channels = 10   # RA, LA, LL, RL, V1-V6
+        self.processed_channels = 11  # RA, LA, LL, RL, V1-V6, WCT
+        
         # Playback state
         self.playing = False
         self.play_speed = 1.0
@@ -372,7 +376,7 @@ class ECGConverterApp(QMainWindow):
         self.info_panel.toggle()
     
     def convert_to_binary(self):
-        """Convert current data to binary format"""
+        """Convert current data to binary format (12 channels)"""
         if self.current_data is None:
             QMessageBox.warning(self, "Warning", "No data available for conversion.")
             return
@@ -381,9 +385,16 @@ class ECGConverterApp(QMainWindow):
             # Get current record name
             record_name = self.control_panel.record_combo.currentText()
             
+            # Get 12-channel data for binary conversion
+            binary_data = self.data_loader.get_binary_channels()
+            
+            if binary_data is None or len(binary_data) == 0:
+                QMessageBox.warning(self, "Warning", "No binary data available for conversion.")
+                return
+            
             # Convert to binary
             result = self.converter.convert_to_binary(
-                self.current_data, record_name, self.current_mode, self.signal_processor
+                binary_data, record_name, self.current_mode, self.signal_processor
             )
             
             if result['success']:

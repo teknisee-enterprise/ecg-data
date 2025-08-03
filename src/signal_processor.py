@@ -144,7 +144,7 @@ class ECGSignalProcessor:
             return {'warning': False, 'message': ''}
     
     def convert_to_binary(self, signal_data: np.ndarray, record_name: str, mode: str) -> Dict:
-        """Convert ECG data to binary format with ESP32 compatibility"""
+        """Convert ECG data to binary format with ESP32 compatibility (12 channels)"""
         if signal_data is None or len(signal_data) == 0:
             return {'success': False, 'error': 'No data available'}
         
@@ -152,13 +152,19 @@ class ECGSignalProcessor:
             # Clear previous warnings
             self.clipping_warnings = []
             
-            # Convert to ESP32 ADC values
-            adc_signal = np.zeros((len(signal_data), 12), dtype=np.uint16)
+            # Binary conversion always uses 12 channels: RA, LA, LL, RL, B1, B2, V1-V6
+            num_channels = 12
+            adc_signal = np.zeros((len(signal_data), num_channels), dtype=np.uint16)
             
             # Convert each channel to ESP32 ADC values
-            for i in range(12):
+            for i in range(min(signal_data.shape[1], num_channels)):
                 if np.any(signal_data[:, i] != 0):  # Only process non-empty channels
                     adc_signal[:, i] = self.convert_mv_to_adc(signal_data[:, i], apply_clipping=True).astype(np.uint16)
+            
+            # Set fixed channels to 0 (RL, B1, B2)
+            adc_signal[:, 3] = 0  # RL (Right Leg) - always 0
+            adc_signal[:, 4] = 0  # B1 (Buffer 1) - always 0
+            adc_signal[:, 5] = 0  # B2 (Buffer 2) - always 0
             
             # Create output filename
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -167,12 +173,12 @@ class ECGSignalProcessor:
             # Write binary file
             with open(f"hasil/{output_filename}", 'wb') as f:
                 for sample_idx in range(len(adc_signal)):
-                    for channel_idx in range(12):
+                    for channel_idx in range(num_channels):
                         value = adc_signal[sample_idx, channel_idx]
                         f.write(struct.pack('<H', value))
             
             # Calculate statistics
-            file_size = len(adc_signal) * 12 * 2  # 12 channels * 2 bytes
+            file_size = len(adc_signal) * num_channels * 2  # 12 channels * 2 bytes
             min_adc = np.min(adc_signal[adc_signal > 0]) if np.any(adc_signal > 0) else 0
             max_adc = np.max(adc_signal)
             min_voltage = self.convert_adc_to_voltage(min_adc)

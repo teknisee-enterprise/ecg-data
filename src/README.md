@@ -26,7 +26,7 @@ The application is split into 5 modules, each with a specific responsibility:
 
 ### Data Processing
 - **Sample Rate**: 800 Hz (from sampleRaw data)
-- **Channel Support**: 12 channels (excluding unipolar channels)
+- **Channel Support**: 10 raw channels, 11 processed channels (excluding unipolar channels)
 - **Y-axis Modes**: Original (mV), ADC (12bit), Voltage (V)
 - **Gain Control**: 1-10000x amplification
 - **Clipping Detection**: Automatic warning system
@@ -91,9 +91,12 @@ sampleRaw/ → DataLoader → SignalProcessor → Converter → hasil/ & hasilcs
 - **Gain Range**: 1-10000x
 
 ### Channel Mapping
-**Raw Channels**: I-Raw, II-Raw, III-Raw, V1-Raw, V2-Raw, V3-Raw, V4-Raw, V5-Raw, V6-Raw, LA-Raw, RA-Raw, LL-Raw
+**Display Mode**:
+- **Raw Channels**: RA-Raw, LA-Raw, LL-Raw, RL-Raw (0), V1-Raw, V2-Raw, V3-Raw, V4-Raw, V5-Raw, V6-Raw
+- **Processed Channels**: RA, LA, LL, RL (0), V1, V2, V3, V4, V5, V6, WCT
 
-**Processed Channels**: I, II, III, V1, V2, V3, V4, V5, V6, LA, RA, LL
+**Binary Export**: Always 12 channels (RA, LA, LL, RL, B1, B2, V1-V6)
+- RL, B1, B2 channels always set to 0
 
 ## 🎛️ Controls
 
@@ -124,10 +127,23 @@ sampleRaw/ → DataLoader → SignalProcessor → Converter → hasil/ & hasilcs
 ## 📤 Export Options
 
 ### Binary Export
-- **Format**: 12 channels × 2 bytes per sample
+- **Format**: 12 channels × 2 bytes per sample (RA, LA, LL, RL, B1, B2, V1-V6)
 - **Location**: `hasil/` folder
 - **Naming**: `{record}_{mode}_{timestamp}.bin`
 - **ESP32 Compatible**: Direct ADC values
+- **Channel Order**:
+  - Channel 1: RA (Right Arm)
+  - Channel 2: LA (Left Arm)
+  - Channel 3: LL (Left Leg)
+  - Channel 4: RL (Right Leg) - always 0
+  - Channel 5: B1 (Buffer 1) - always 0
+  - Channel 6: B2 (Buffer 2) - always 0
+  - Channel 7: V1
+  - Channel 8: V2
+  - Channel 9: V3
+  - Channel 10: V4
+  - Channel 11: V5
+  - Channel 12: V6
 
 ### CSV Export
 - **Format**: Time column + channel columns

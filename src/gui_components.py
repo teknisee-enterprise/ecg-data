@@ -158,7 +158,7 @@ class ChannelControlPanel(QGroupBox):
         
         # Channel checkboxes
         self.channel_checkboxes = []
-        self.max_channels = 12
+        self.max_channels = 11  # Maximum channels (RA, LA, LL, RL, V1-V6, WCT)
         
         # Buttons
         self.select_all_btn = QPushButton("Select All")
@@ -354,11 +354,11 @@ class PlotArea(QWidget):
         self.guide_lines_y_zero = []
         self.guide_lines_y_offset = []
         
-        self.max_channels = 12
+        self.max_channels = 11  # Maximum channels (RA, LA, LL, RL, V1-V6, WCT)
         self.channel_colors = [
             (255, 0, 0), (0, 0, 255), (0, 128, 0), (128, 0, 128),
             (255, 165, 0), (0, 128, 128), (128, 0, 0), (0, 0, 128),
-            (128, 128, 0), (255, 0, 255), (0, 0, 0), (64, 64, 64)
+            (128, 128, 0), (255, 0, 255), (0, 0, 0)
         ]
         
         self.create_plot_widgets()
@@ -456,9 +456,18 @@ class PlotArea(QWidget):
         if signal_data is None or len(signal_data) == 0:
             return
         
+        # Get the actual number of channels in the data
+        num_channels = signal_data.shape[1] if len(signal_data.shape) > 1 else 1
+        
         # Update each channel
         for i in range(self.max_channels):
             if i < len(visible_channels) and visible_channels[i]:
+                # Check if channel index is within bounds
+                if i >= num_channels:
+                    # Hide this plot if channel doesn't exist in data
+                    self.plot_widgets[i].hide()
+                    continue
+                
                 # Get channel data
                 channel_data = signal_data[:, i]
                 
