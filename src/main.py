@@ -385,12 +385,38 @@ class ECGConverterApp(QMainWindow):
             # Get current record name
             record_name = self.control_panel.record_combo.currentText()
             
-            # Get 12-channel data for binary conversion
-            binary_data = self.data_loader.get_binary_channels()
-            
-            if binary_data is None or len(binary_data) == 0:
+            # Build 12-channel binary data from the CURRENT (trimmed) data based on mode
+            # Always output channels: [RA, LA, LL, RL, B1(0), B2(0), V1, V2, V3, V4, V5, V6]
+            if self.current_data is None or len(self.current_data) == 0:
                 QMessageBox.warning(self, "Warning", "No binary data available for conversion.")
                 return
+            
+            num_samples = self.current_data.shape[0]
+            binary_data = np.zeros((num_samples, 12), dtype=float)
+            
+            if self.current_mode == DataMode.RAW:
+                # self.current_data shape: (N, 10) -> [RA, LA, LL, RL(0), V1..V6]
+                if self.current_data.shape[1] < 10:
+                    QMessageBox.warning(self, "Warning", "Raw data does not have 10 channels.")
+                    return
+                # Limb electrodes
+                binary_data[:, 0] = self.current_data[:, 0]  # RA
+                binary_data[:, 1] = self.current_data[:, 1]  # LA
+                binary_data[:, 2] = self.current_data[:, 2]  # LL
+                binary_data[:, 3] = 0                        # RL forced to 0
+                # B1, B2 already zeros at [:,4] and [:,5]
+                # Chest leads
+                binary_data[:, 6:12] = self.current_data[:, 4:10]  # V1..V6
+            else:
+                # PROCESSED: self.current_data shape: (N, 11) -> [RA, LA, LL, RL, V1..V6, WCT]
+                if self.current_data.shape[1] < 11:
+                    QMessageBox.warning(self, "Warning", "Processed data does not have 11 channels.")
+                    return
+                # Limb leads from processed
+                binary_data[:, 0:4] = self.current_data[:, 0:4]  # RA, LA, LL, RL
+                # B1, B2 remain zeros at [:,4] and [:,5]
+                # Chest leads (ignore WCT which is last column)
+                binary_data[:, 6:12] = self.current_data[:, 4:10]  # V1..V6
             
             # Convert to binary
             result = self.converter.convert_to_binary(

@@ -688,7 +688,7 @@ class ECGSignalValidator(QMainWindow):
             
             # === EXISTING CALCULATIONS: MSE and SNR ===
             # Calculate MSE
-            mse = np.mean((ref_overlap - measured_resampled) ** 2)
+            mse = np.mean((ref_overlap - measured_resampled) ** 2) 
             
             # Calculate SNR
             signal_rms = np.sqrt(np.mean(ref_overlap ** 2))
@@ -727,12 +727,12 @@ class ECGSignalValidator(QMainWindow):
             self.mse_label.setText(f"MSE: {(mse/100000):.3f} mV²")
             
             # New metric displays
-            self.peak_error_label.setText(f"Peak Error: {peak_error*3/100:.2f} mV")
-            self.thd_label.setText(f"THD: {thd*3/100:.2f} %")
+            self.peak_error_label.setText(f"Peak Error: {peak_error/300:.2f} mV")
+            self.thd_label.setText(f"THD: {thd/100:.2f} %")
             # self.correlation_label.setText(f"Correlation: {correlation:.3f}")
     
             rmse = np.sqrt(mse)
-            self.correlation_label.setText(f"RMSE: {rmse/3:.2f} mV")
+            self.correlation_label.setText(f"RMSE: {rmse/12:.2f} mV")
             
             # Additional info in status
             overlap_duration = time_end - time_start
