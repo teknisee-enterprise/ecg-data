@@ -102,7 +102,7 @@ pip install -r requirements.txt
 ### 5. Jalankan Aplikasi
 
 ```bash
-python main.py
+python src/main.py
 ```
 
 ### 6. Jika Terjadi Perubahan pada Repository (on-change update)
